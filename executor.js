@@ -4,9 +4,10 @@
 class CommandExecutor {
   constructor() {
     this.logger = new Logger('CommandExecutor');
+    this.maxSummaryChars = 12000;
   }
 
-  execute(command = {}) {
+  async execute(command = {}) {
     const action = command?.action || 'NONE';
     const params = command?.params || {};
 
@@ -20,6 +21,10 @@ class CommandExecutor {
           return this.executeOpenSite(params);
         case 'SEARCH':
           return this.executeSearch(params);
+        case 'SUMMARIZE_PAGE':
+          return await this.executeSummarizePage(params);
+        case 'DESCRIBE_IMAGE':
+          return await this.executeDescribeImage(params);
         default:
           return this.buildResult({
             action,
@@ -278,6 +283,125 @@ class CommandExecutor {
       message: `Searching the web for ${query}.`,
       payload: { query, mode: 'web_fallback', url: fallbackUrl },
       telemetry: { mode: 'web_fallback' },
+    });
+  }
+
+  truncateToBudget(text = '', maxChars = this.maxSummaryChars) {
+    if (!text) {
+      return '';
+    }
+
+    return text.length <= maxChars ? text : `${text.slice(0, maxChars)}…`;
+  }
+
+  formatSummaryForTTS(summary = '') {
+    return String(summary || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => (line.startsWith('-') || line.startsWith('•') ? line : `• ${line.replace(/^[*]\s*/, '')}`))
+      .join('\n');
+  }
+
+  async executeSummarizePage() {
+    const pageText = this.truncateToBudget(document.body?.innerText || '');
+    const context = {
+      title: document.title,
+      url: window.location.href,
+      pageText,
+    };
+
+    const summary = await aiClient.summarize(context);
+    if (!summary) {
+      return this.buildResult({
+        action: 'SUMMARIZE_PAGE',
+        success: false,
+        status: 'unavailable',
+        message: 'I cannot summarize this page right now.',
+      });
+    }
+
+    const ttsSummary = this.formatSummaryForTTS(summary);
+    return this.buildResult({
+      action: 'SUMMARIZE_PAGE',
+      success: true,
+      status: 'completed',
+      message: ttsSummary,
+      payload: { summary: ttsSummary },
+      telemetry: { summaryChars: ttsSummary.length, sourceChars: pageText.length },
+    });
+  }
+
+  getLargestVisibleImage() {
+    const images = Array.from(document.querySelectorAll('img'));
+    const visibleImages = images
+      .map((img) => {
+        const rect = img.getBoundingClientRect();
+        const area = Math.max(0, rect.width) * Math.max(0, rect.height);
+        const inViewport = rect.bottom > 0
+          && rect.right > 0
+          && rect.top < window.innerHeight
+          && rect.left < window.innerWidth;
+
+        return { img, rect, area, inViewport };
+      })
+      .filter(({ img, area, inViewport }) => this.isElementVisible(img) && inViewport && area > 0);
+
+    visibleImages.sort((a, b) => b.area - a.area);
+    return visibleImages[0] || null;
+  }
+
+  async executeDescribeImage() {
+    const candidate = this.getLargestVisibleImage();
+    if (!candidate) {
+      return this.buildResult({
+        action: 'DESCRIBE_IMAGE',
+        success: false,
+        status: 'not_found',
+        message: 'I cannot find a visible image to describe.',
+      });
+    }
+
+    const { img, rect, area } = candidate;
+    const context = {
+      title: document.title,
+      url: window.location.href,
+      imageUrl: img.currentSrc || img.src || '',
+      imageAlt: img.alt || '',
+      imageContext: this.truncateToBudget(
+        `${img.alt || ''} ${img.title || ''} ${img.getAttribute('aria-label') || ''}`.trim(),
+        500,
+      ),
+      imageAlts: Array.from(document.querySelectorAll('img[alt]'))
+        .map((node) => node.alt)
+        .filter(Boolean)
+        .slice(0, 15),
+    };
+
+    const description = await aiClient.vision(context);
+    if (!description) {
+      return this.buildResult({
+        action: 'DESCRIBE_IMAGE',
+        success: false,
+        status: 'unavailable',
+        message: 'I cannot describe this image right now.',
+      });
+    }
+
+    return this.buildResult({
+      action: 'DESCRIBE_IMAGE',
+      success: true,
+      status: 'completed',
+      message: description,
+      payload: {
+        description,
+        imageUrl: context.imageUrl,
+      },
+      telemetry: {
+        imageArea: Math.round(area),
+        imageWidth: Math.round(rect.width),
+        imageHeight: Math.round(rect.height),
+      },
     });
   }
 }

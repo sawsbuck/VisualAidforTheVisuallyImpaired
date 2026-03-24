@@ -147,20 +147,8 @@ async function handleRecognizedSpeech(transcript, confidence) {
   const command = await commandRouter.routeCommand(transcript, context);
   logger.info(`Command parsed: ${command.action}`);
 
-  if (command.action === 'SUMMARIZE_PAGE') {
-    const summary = (await aiClient.summarize(context)) || 'I cannot summarize right now.';
-    voiceService.speak(summary);
-    return;
-  }
-
-  if (command.action === 'DESCRIBE_IMAGE') {
-    const description = (await aiClient.vision(context)) || 'I cannot describe this page right now.';
-    voiceService.speak(description);
-    return;
-  }
-
   if (command.action !== 'NONE') {
-    const result = commandExecutor.execute(command);
+    const result = await commandExecutor.execute(command);
     if (result?.tts?.message) {
       voiceService.speak(result.tts.message);
     }
