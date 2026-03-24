@@ -28,6 +28,9 @@
       "js": [
         "config.js",
         "logger.js",
+        "voice.js",
+        "ai.js",
+        "commands.js",
         "speech-service.js",
         "content.js"
       ],

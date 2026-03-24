@@ -19,6 +19,11 @@ const CONFIG = {
     START_LISTENING: 'v',
     SCROLL_RIGHT: 's',
   },
+  AI: {
+    ENDPOINT: '',
+    API_KEY: '',
+    MODEL: 'gpt-4o-mini',
+  },
   LOGGING: {
     ENABLED: true,
     LEVEL: 'INFO', // ERROR, WARN, INFO, DEBUG
