@@ -155,7 +155,9 @@ class CommandRouter {
       scrollDown: this.buildContract('SCROLL', { direction: 'down' }),
       scrollUp: this.buildContract('SCROLL', { direction: 'up' }),
       summarizePage: this.buildContract('SUMMARIZE_PAGE', {}),
+      summarize: this.buildContract('SUMMARIZE_PAGE', {}),
       describePage: this.buildContract('DESCRIBE_IMAGE', {}),
+      describeImage: this.buildContract('DESCRIBE_IMAGE', {}),
       none: this.buildContract('NONE', {}),
     };
 
