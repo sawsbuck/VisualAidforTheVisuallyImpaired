@@ -96,9 +96,8 @@ class CommandExecutor {
     else if (text.includes(desiredText)) score += 70;
     else return -1;
 
-    if (this.isElementVisible(el)) {
-      score += 30;
-    }
+    if (this.isElementVisible(el)) score += 30;
+    else score -= 40;
 
     if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && ['submit', 'button'].includes((el.type || '').toLowerCase()))) {
       score += 10;
@@ -149,6 +148,7 @@ class CommandExecutor {
   executeScroll(params = {}) {
     const direction = String(params.direction || '').toLowerCase();
     const behavior = params.behavior === 'auto' ? 'auto' : 'smooth';
+    const hasExplicitOffsets = Number.isFinite(params.top) || Number.isFinite(params.left);
 
     const offsets = {
       up: { top: -300, left: 0 },
@@ -159,7 +159,9 @@ class CommandExecutor {
       bottom: { top: Math.max(document.body.scrollHeight - window.scrollY, 0), left: 0 },
     };
 
-    const offset = offsets[direction];
+    const offset = hasExplicitOffsets
+      ? { top: Number(params.top) || 0, left: Number(params.left) || 0 }
+      : offsets[direction];
     if (!offset) {
       return this.buildResult({
         action: 'SCROLL',
@@ -175,9 +177,9 @@ class CommandExecutor {
       action: 'SCROLL',
       success: true,
       status: 'completed',
-      message: `Scrolling ${direction}.`,
-      payload: { direction, behavior, ...offset },
-      telemetry: { direction, behavior },
+      message: hasExplicitOffsets ? 'Scrolling the page.' : `Scrolling ${direction}.`,
+      payload: { direction: direction || null, behavior, ...offset },
+      telemetry: { direction: direction || null, behavior, mode: hasExplicitOffsets ? 'explicit_offset' : 'direction_map' },
     });
   }
 
@@ -225,7 +227,10 @@ class CommandExecutor {
   }
 
   findSiteSearchBox() {
-    const searchInputs = Array.from(document.querySelectorAll('input,textarea'));
+    const scopedSearchInputs = Array.from(document.querySelectorAll('form[role="search"] input, form[role="search"] textarea'));
+    const searchInputs = scopedSearchInputs.length > 0
+      ? scopedSearchInputs
+      : Array.from(document.querySelectorAll('input,textarea'));
     return searchInputs.find((el) => {
       const type = (el.getAttribute('type') || '').toLowerCase();
       const role = (el.getAttribute('role') || '').toLowerCase();
