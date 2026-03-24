@@ -1,39 +1,26 @@
 /**
  * Content Script for AI Accessibility Assistant
- * Runs in the context of web pages to provide voice control
+ * Orchestrator only: capture context, route commands, execute actions.
  */
 
 const logger = new Logger('ContentScript');
 
-/**
- * Initialize the content script
- */
 function initialize() {
   logger.info('AI Accessibility Assistant loaded on page');
 
-  // Initialize speech service
-  if (!speechService.initialize()) {
-    logger.error('Failed to initialize speech service');
+  if (!voiceService.initialize()) {
+    logger.error('Failed to initialize voice service');
   }
 
-  // Setup keyboard shortcuts
   setupKeyboardShortcuts();
-
-  // Setup speech service callbacks
   setupSpeechCallbacks();
-  
-  // Setup message handlers for popup/background actions
   setupMessageHandlers();
 
   logger.info('Content script initialization complete');
 }
 
-/**
- * Setup keyboard shortcuts
- */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (event) => {
-    // Prevent action if user is typing in an input field
     if (isUserTyping(event.target)) {
       return;
     }
@@ -42,71 +29,47 @@ function setupKeyboardShortcuts() {
 
     if (key === CONFIG.KEYS.START_LISTENING) {
       event.preventDefault();
-      handleVoiceCommand();
+      toggleVoiceCommand();
     } else if (key === CONFIG.KEYS.SCROLL_RIGHT) {
       event.preventDefault();
-      handleScrollRight();
+      executeAction('scrollRight');
     }
   });
 
   logger.debug('Keyboard shortcuts setup complete');
 }
 
-/**
- * Check if user is typing in an input field
- */
 function isUserTyping(element) {
   const editableElements = ['INPUT', 'TEXTAREA', 'CONTENTEDITABLE'];
-  return editableElements.includes(element.tagName) || 
-         element.contentEditable === 'true';
+  return editableElements.includes(element.tagName) || element.contentEditable === 'true';
 }
 
-/**
- * Handle voice command (press V)
- */
-function handleVoiceCommand() {
-  if (speechService.isListening) {
+function toggleVoiceCommand() {
+  if (voiceService.isListening) {
     logger.info('Stopping voice recognition');
-    speechService.stopListening();
+    voiceService.stopListening();
   } else {
     logger.info('Starting voice recognition');
-    if (!speechService.startListening()) {
+    if (!voiceService.startListening()) {
       const errorMessage = 'Failed to start voice recognition. Check browser permissions.';
       logger.error(errorMessage);
-      speechService.speak(errorMessage);
+      voiceService.speak(errorMessage);
     }
   }
 }
 
-/**
- * Handle scroll right (press S)
- */
-function handleScrollRight() {
-  const scrollContainer = document.documentElement;
-  scrollContainer.scrollLeft += 100;
-  logger.debug('Scrolled right by 100px');
-}
+function executeAction(action, payload = {}) {
+  const actionHandlers = {
+    activateVoiceControl: () => ({ success: true, message: 'Voice control toggled', result: toggleVoiceCommand() }),
+    startListening: () => ({ success: true, message: 'Listening started', result: voiceService.startListening() }),
+    stopListening: () => ({ success: true, message: 'Listening stopped', result: voiceService.stopListening() }),
+    scrollRight: () => ({ success: true, message: 'Scrolled right', result: window.scrollBy({ left: 100, behavior: 'smooth' }) }),
+    scrollLeft: () => ({ success: true, message: 'Scrolled left', result: window.scrollBy({ left: -100, behavior: 'smooth' }) }),
+    scrollDown: () => ({ success: true, message: 'Scrolled down', result: window.scrollBy({ top: 300, behavior: 'smooth' }) }),
+    scrollUp: () => ({ success: true, message: 'Scrolled up', result: window.scrollBy({ top: -300, behavior: 'smooth' }) }),
+  };
 
-/**
- * Action handlers (extensible command router)
- */
-const ACTION_HANDLERS = {
-  activateVoiceControl: () => {
-    handleVoiceCommand();
-    return { success: true, message: 'Voice control toggled' };
-  },
-  scrollRight: () => {
-    handleScrollRight();
-    return { success: true, message: 'Scrolled right' };
-  },
-};
-
-/**
- * Handle incoming action requests
- */
-function handleAction(action, payload = {}) {
-  const handler = ACTION_HANDLERS[action];
-
+  const handler = actionHandlers[action];
   if (!handler) {
     logger.warn(`Unknown action received: ${action}`);
     return { success: false, error: `Unknown action: ${action}` };
@@ -120,9 +83,6 @@ function handleAction(action, payload = {}) {
   }
 }
 
-/**
- * Setup runtime message handlers
- */
 function setupMessageHandlers() {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!request?.action) {
@@ -131,7 +91,7 @@ function setupMessageHandlers() {
     }
 
     logger.debug(`Message action received: ${request.action}`);
-    const result = handleAction(request.action, request.payload);
+    const result = executeAction(request.action, request.payload);
     sendResponse(result);
     return false;
   });
@@ -139,56 +99,80 @@ function setupMessageHandlers() {
   logger.debug('Message handlers setup complete');
 }
 
-/**
- * Setup speech service event callbacks
- */
 function setupSpeechCallbacks() {
-  speechService.on('onStart', () => {
+  voiceService.on('onStart', () => {
     logger.info('Listening started');
     updateUI('listening');
   });
 
-  speechService.on('onResult', (data) => {
+  voiceService.on('onResult', async (data) => {
     const { transcript, confidence } = data;
     logger.info(`Recognized: "${transcript}" (Confidence: ${(confidence * 100).toFixed(1)}%)`);
-    handleRecognizedSpeech(transcript, confidence);
+    await handleRecognizedSpeech(transcript, confidence);
     updateUI('result');
   });
 
-  speechService.on('onError', (data) => {
+  voiceService.on('onError', (data) => {
     const { error, message } = data;
     logger.error(`Speech error: ${error}`);
-    speechService.speak(message);
+    voiceService.speak(message);
     updateUI('error');
   });
 
-  speechService.on('onEnd', () => {
+  voiceService.on('onEnd', () => {
     logger.info('Listening ended');
     updateUI('idle');
   });
 }
 
-/**
- * Handle recognized speech
- */
-function handleRecognizedSpeech(transcript, confidence) {
-  // Future: Add command processing here
-  const response = `You said: ${transcript}`;
-  speechService.speak(response);
-  logger.info(`Spoken: "${response}"`);
+function capturePageContext() {
+  const selection = window.getSelection ? String(window.getSelection()) : '';
+  const bodyText = document.body?.innerText || '';
+  const imageAlts = Array.from(document.querySelectorAll('img[alt]'))
+    .map((img) => img.alt)
+    .filter(Boolean)
+    .slice(0, 15);
+
+  return {
+    title: document.title,
+    url: window.location.href,
+    selection: selection.slice(0, 800),
+    pageText: bodyText.slice(0, 3000),
+    imageAlts,
+  };
 }
 
-/**
- * Update UI status (for future UI enhancements)
- */
+async function handleRecognizedSpeech(transcript, confidence) {
+  const context = capturePageContext();
+  const route = await commandRouter.routeCommand(transcript, context);
+
+  logger.info(`Command routed by ${route.source}: ${route.action}`);
+
+  if (route.action === 'summarizePage') {
+    const summary = (await aiClient.summarize(context)) || 'I cannot summarize right now.';
+    voiceService.speak(summary);
+    return;
+  }
+
+  if (route.action === 'describePage') {
+    const description = (await aiClient.vision(context)) || 'I cannot describe this page right now.';
+    voiceService.speak(description);
+    return;
+  }
+
+  if (route.action !== 'none') {
+    executeAction(route.action, route.args);
+  }
+
+  if (route.reply) {
+    voiceService.speak(route.reply);
+  }
+}
+
 function updateUI(status) {
   logger.debug(`UI Status: ${status}`);
-  // Future: Add visual feedback here
 }
 
-/**
- * Start the content script when DOM is ready
- */
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initialize);
 } else {
