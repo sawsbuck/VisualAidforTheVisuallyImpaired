@@ -144,29 +144,91 @@ function capturePageContext() {
 
 async function handleRecognizedSpeech(transcript, confidence) {
   const context = capturePageContext();
-  const route = await commandRouter.routeCommand(transcript, context);
+  const command = await commandRouter.routeCommand(transcript, context);
+  logger.info(`Command parsed: ${command.action}`);
 
-  logger.info(`Command routed by ${route.source}: ${route.action}`);
-
-  if (route.action === 'summarizePage') {
+  if (command.action === 'SUMMARIZE_PAGE') {
     const summary = (await aiClient.summarize(context)) || 'I cannot summarize right now.';
     voiceService.speak(summary);
     return;
   }
 
-  if (route.action === 'describePage') {
+  if (command.action === 'DESCRIBE_IMAGE') {
     const description = (await aiClient.vision(context)) || 'I cannot describe this page right now.';
     voiceService.speak(description);
     return;
   }
 
-  if (route.action !== 'none') {
-    executeAction(route.action, route.args);
+  if (command.action !== 'NONE') {
+    executeRoutedCommand(command);
+  }
+}
+
+function executeRoutedCommand(command) {
+  const { action, params } = command;
+  switch (action) {
+    case 'OPEN_SITE':
+      window.location.assign(params.site);
+      voiceService.speak(`Opening ${params.site}`);
+      break;
+    case 'SEARCH': {
+      const url = `https://www.google.com/search?q=${encodeURIComponent(params.query)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+      voiceService.speak(`Searching for ${params.query}`);
+      break;
+    }
+    case 'SCROLL':
+      executeScrollIntent(params.direction);
+      break;
+    case 'CLICK':
+      executeClickIntent(params.target);
+      break;
+    default:
+      logger.debug(`No DOM execution required for action: ${action}`);
+      break;
+  }
+}
+
+function executeScrollIntent(direction) {
+  const map = {
+    right: () => executeAction('scrollRight'),
+    left: () => executeAction('scrollLeft'),
+    down: () => executeAction('scrollDown'),
+    up: () => executeAction('scrollUp'),
+    top: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+    bottom: () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }),
+  };
+
+  if (!map[direction]) {
+    logger.warn(`Unsupported scroll direction: ${direction}`);
+    return;
   }
 
-  if (route.reply) {
-    voiceService.speak(route.reply);
+  map[direction]();
+}
+
+function executeClickIntent(target) {
+  const normalizedTarget = (target || '').trim();
+  if (!normalizedTarget) {
+    return;
   }
+
+  const clickableSelectors = ['button', 'a', '[role="button"]', 'input[type="submit"]', 'input[type="button"]'];
+  const candidates = Array.from(document.querySelectorAll(clickableSelectors.join(',')));
+  const desiredText = normalizedTarget.toLowerCase();
+
+  const match = candidates.find((el) => {
+    const text = ((el.innerText || el.value || el.getAttribute('aria-label') || '') + '').trim().toLowerCase();
+    return text === desiredText || text.includes(desiredText);
+  });
+
+  if (!match) {
+    voiceService.speak(`I could not find ${normalizedTarget} to click.`);
+    return;
+  }
+
+  match.click();
+  voiceService.speak(`Clicking ${normalizedTarget}`);
 }
 
 function updateUI(status) {
