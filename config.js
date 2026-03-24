@@ -25,5 +25,18 @@ const CONFIG = {
   },
 };
 
-// Freeze to prevent accidental modifications
-Object.freeze(CONFIG);
+/**
+ * Deep-freeze object recursively to prevent accidental modifications
+ */
+function deepFreeze(object) {
+  Object.getOwnPropertyNames(object).forEach((property) => {
+    const value = object[property];
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+      deepFreeze(value);
+    }
+  });
+
+  return Object.freeze(object);
+}
+
+deepFreeze(CONFIG);

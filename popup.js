@@ -42,6 +42,9 @@ function handleActivateClick() {
           if (chrome.runtime.lastError) {
             popupLogger.error('Failed to send message to content script');
             updateStatusMessage('Unable to activate on this page');
+          } else if (!response?.success) {
+            popupLogger.warn(`Activation rejected: ${response?.error || 'Unknown reason'}`);
+            updateStatusMessage(response?.error || 'Unable to activate on this page');
           } else {
             updateStatusMessage('Voice control activated!');
             popupLogger.info('Voice control activated');
