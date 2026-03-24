@@ -21,6 +21,9 @@ function initialize() {
 
   // Setup speech service callbacks
   setupSpeechCallbacks();
+  
+  // Setup message handlers for popup/background actions
+  setupMessageHandlers();
 
   logger.info('Content script initialization complete');
 }
@@ -82,6 +85,58 @@ function handleScrollRight() {
   const scrollContainer = document.documentElement;
   scrollContainer.scrollLeft += 100;
   logger.debug('Scrolled right by 100px');
+}
+
+/**
+ * Action handlers (extensible command router)
+ */
+const ACTION_HANDLERS = {
+  activateVoiceControl: () => {
+    handleVoiceCommand();
+    return { success: true, message: 'Voice control toggled' };
+  },
+  scrollRight: () => {
+    handleScrollRight();
+    return { success: true, message: 'Scrolled right' };
+  },
+};
+
+/**
+ * Handle incoming action requests
+ */
+function handleAction(action, payload = {}) {
+  const handler = ACTION_HANDLERS[action];
+
+  if (!handler) {
+    logger.warn(`Unknown action received: ${action}`);
+    return { success: false, error: `Unknown action: ${action}` };
+  }
+
+  try {
+    return handler(payload);
+  } catch (error) {
+    logger.error(`Action failed: ${action}`, error);
+    return { success: false, error: 'Action failed' };
+  }
+}
+
+/**
+ * Setup runtime message handlers
+ */
+function setupMessageHandlers() {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (!request?.action) {
+      sendResponse({ success: false, error: 'Missing action' });
+      return false;
+    }
+
+    logger.debug(`Message action received: ${request.action}`);
+    const result = handleAction(request.action, request.payload);
+    sendResponse(result);
+    return false;
+  });
+
+  logger.debug('Message handlers setup complete');
 }
 
 /**

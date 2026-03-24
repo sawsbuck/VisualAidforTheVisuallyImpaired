@@ -98,10 +98,17 @@ class SpeechService {
       return;
     }
 
-    const result = event.results[0];
+    const resultIndex = typeof event.resultIndex === 'number' ? event.resultIndex : event.results.length - 1;
+    const result = event.results[resultIndex];
+
+    if (!result || !result[0]) {
+      this.logger.debug('Invalid result payload received');
+      return;
+    }
+
     const transcript = result[0].transcript.trim();
     const confidence = result[0].confidence;
-    const isFinal = event.results[0].isFinal;
+    const isFinal = result.isFinal;
 
     this.logger.debug(`Transcript: "${transcript}" (Confidence: ${(confidence * 100).toFixed(1)}%, Final: ${isFinal})`);
 
@@ -183,7 +190,10 @@ class SpeechService {
    */
   on(event, callback) {
     if (typeof callback === 'function') {
-      this.callbacks[event] = callback;
+      if (!this.callbacks[event]) {
+        this.callbacks[event] = [];
+      }
+      this.callbacks[event].push(callback);
       this.logger.debug(`Registered callback for event: ${event}`);
     }
   }
@@ -192,9 +202,11 @@ class SpeechService {
    * Execute registered callback
    */
   _executeCallback(event, data = null) {
-    if (this.callbacks[event]) {
+    const eventCallbacks = this.callbacks[event] || [];
+
+    for (const callback of eventCallbacks) {
       try {
-        this.callbacks[event](data);
+        callback(data);
       } catch (error) {
         this.logger.error(`Error executing callback for ${event}`, error);
       }
