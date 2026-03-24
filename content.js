@@ -160,75 +160,13 @@ async function handleRecognizedSpeech(transcript, confidence) {
   }
 
   if (command.action !== 'NONE') {
-    executeRoutedCommand(command);
-  }
-}
-
-function executeRoutedCommand(command) {
-  const { action, params } = command;
-  switch (action) {
-    case 'OPEN_SITE':
-      window.location.assign(params.site);
-      voiceService.speak(`Opening ${params.site}`);
-      break;
-    case 'SEARCH': {
-      const url = `https://www.google.com/search?q=${encodeURIComponent(params.query)}`;
-      window.open(url, '_blank', 'noopener,noreferrer');
-      voiceService.speak(`Searching for ${params.query}`);
-      break;
+    const result = commandExecutor.execute(command);
+    if (result?.tts?.message) {
+      voiceService.speak(result.tts.message);
     }
-    case 'SCROLL':
-      executeScrollIntent(params.direction);
-      break;
-    case 'CLICK':
-      executeClickIntent(params.target);
-      break;
-    default:
-      logger.debug(`No DOM execution required for action: ${action}`);
-      break;
+
+    logger.info(`Execution result: ${result.status}`, result.telemetry || {});
   }
-}
-
-function executeScrollIntent(direction) {
-  const map = {
-    right: () => executeAction('scrollRight'),
-    left: () => executeAction('scrollLeft'),
-    down: () => executeAction('scrollDown'),
-    up: () => executeAction('scrollUp'),
-    top: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
-    bottom: () => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }),
-  };
-
-  if (!map[direction]) {
-    logger.warn(`Unsupported scroll direction: ${direction}`);
-    return;
-  }
-
-  map[direction]();
-}
-
-function executeClickIntent(target) {
-  const normalizedTarget = (target || '').trim();
-  if (!normalizedTarget) {
-    return;
-  }
-
-  const clickableSelectors = ['button', 'a', '[role="button"]', 'input[type="submit"]', 'input[type="button"]'];
-  const candidates = Array.from(document.querySelectorAll(clickableSelectors.join(',')));
-  const desiredText = normalizedTarget.toLowerCase();
-
-  const match = candidates.find((el) => {
-    const text = ((el.innerText || el.value || el.getAttribute('aria-label') || '') + '').trim().toLowerCase();
-    return text === desiredText || text.includes(desiredText);
-  });
-
-  if (!match) {
-    voiceService.speak(`I could not find ${normalizedTarget} to click.`);
-    return;
-  }
-
-  match.click();
-  voiceService.speak(`Clicking ${normalizedTarget}`);
 }
 
 function updateUI(status) {
