@@ -3,6 +3,9 @@
  * Handles extension-level events and management
  */
 
+// Import shared dependencies for service worker context (MV3)
+importScripts('config.js', 'logger.js');
+
 const backgroundLogger = new Logger('BackgroundWorker');
 
 /**
