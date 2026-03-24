@@ -22,9 +22,9 @@ class AIClient {
 
   buildSummarizePrompt(context = {}) {
     return [
-      'Summarize the page for accessibility in 2-4 short sentences.',
+      'Summarize the page for accessibility as 3-5 concise bullet points for text-to-speech.',
+      'Keep each bullet short and practical.',
       `Title: ${context.title || ''}`,
-      `Selection: ${context.selection || ''}`,
       `Main text: ${context.pageText || ''}`,
     ].join('\n');
   }
@@ -33,6 +33,10 @@ class AIClient {
     return [
       'Describe relevant visual layout for a low-vision user in plain language.',
       `Title: ${context.title || ''}`,
+      `Page URL: ${context.url || ''}`,
+      `Primary image URL: ${context.imageUrl || ''}`,
+      `Primary image alt text: ${context.imageAlt || ''}`,
+      `Primary image nearby context: ${context.imageContext || ''}`,
       `Image alt texts: ${(context.imageAlts || []).join(', ')}`,
     ].join('\n');
   }
